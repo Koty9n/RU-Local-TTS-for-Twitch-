@@ -46,6 +46,15 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .chip button:hover{color:var(--bad)}
 details summary{cursor:pointer;color:var(--mut);margin-top:8px}
 #log{font:11px/1.5 ui-monospace,Consolas,monospace;color:var(--mut);max-height:60vh;overflow:auto;white-space:pre-wrap}
+.chk{display:flex;gap:6px;align-items:center;cursor:pointer}
+input[type=checkbox]{accent-color:var(--acc);width:16px;height:16px;margin:0}
+.sgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+.sgrid label,.slab{display:flex;flex-direction:column;gap:4px;color:var(--mut);font-size:12px}
+.slab{margin-top:8px}
+.chip .play{color:var(--fg);font-size:11px}
+.chip .snd{color:var(--mut);font-size:11px}
+#sCard.drop{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
+.chip .play:hover{color:var(--acc-hi)}
 #gh{display:block;text-align:center;color:var(--mut);font-size:11px;margin:4px 0 8px;text-decoration:none}
 #gh:hover{color:var(--acc-hi)}
 #msg{position:fixed;left:8px;right:8px;bottom:8px;background:var(--acc);color:#fff;padding:8px 12px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:3}
@@ -65,6 +74,7 @@ details summary{cursor:pointer;color:var(--mut);margin-top:8px}
     <button role="tab" data-t="main">Пульт</button>
     <button role="tab" data-t="access">Доступ</button>
     <button role="tab" data-t="dict">Словарь</button>
+    <button role="tab" data-t="snd">Звуки</button>
     <button role="tab" data-t="log">Журнал</button>
   </div>
 </div>
@@ -136,6 +146,32 @@ details summary{cursor:pointer;color:var(--mut);margin-top:8px}
       <div class="row" style="margin-top:8px"><button id="bReplSave" class="pri grow">Сохранить</button></div>
     </details>
     <div class="hint">Строка: <b>что = на что</b>. Готовый словарь — data/replacements_twitch.txt, твои строки важнее.</div>
+  </div>
+</section>
+
+<section class="pane" id="p-snd">
+  <div class="card" id="sCard">
+    <h2>Добавить звук</h2>
+    <div class="row">
+      <input type="text" id="sWord" placeholder="слово из чата, например: kekw" class="grow">
+      <input type="file" id="sFile" accept="audio/*,.mp3,.ogg,.wav" hidden>
+      <button id="bSnd" class="pri">Выбрать звук…</button>
+    </div>
+    <div class="hint">Напиши слово и выбери mp3, ogg или wav — готово: это слово в чате станет звуком. Или просто перетащи файл сюда: слово возьмётся из имени файла.</div>
+  </div>
+  <div class="card">
+    <h2>Мои звуки</h2>
+    <div class="chips" id="sndList" style="margin-top:0"></div>
+    <div class="hint">▶ — прослушать, × — удалить звук вместе с его словом.</div>
+  </div>
+  <div class="card">
+    <div class="row"><h2 class="grow" style="margin:0">Настройки</h2><label class="chk"><input type="checkbox" id="sOn"> Звуки включены</label></div>
+    <div class="sgrid">
+      <label title="Сколько звуков может прозвучать в одном сообщении, лишние пропускаются">Звуков на сообщение<input type="number" id="sMax" min="0" max="20"></label>
+      <label title="Звук длиннее обрезается с затуханием">Макс. длина, сек<input type="number" id="sSec" min="0.5" max="30" step="0.5"></label>
+    </div>
+    <label class="slab"><span>Громкость звуков <span id="sVolv"></span></span><input type="range" id="sVol" min="0" max="200" step="5"></label>
+    <div class="hint">Звук вместе со словом — руками на вкладке «Словарь»: <b>гол = гол [барабан]</b>. Написать [kekw] прямо в чате нельзя — звук срабатывает только через слова.</div>
   </div>
 </section>
 
@@ -218,6 +254,7 @@ function render(s){
   chips('banList', s.blacklist, 'ban_del');
   chips('blockList', s.blocked || [], 'block_del');
   chips('muteList', s.muted || [], 'mute_del');
+  renderSounds(s);
   if($('p-log').classList.contains('on')) renderLog(s);   // журнал рисуем, только когда его видно
 }
 
@@ -265,6 +302,80 @@ $('replBox').ontoggle = async ()=>{
 $('bReplSave').onclick = ()=>call({action:'repl_set',value:$('replArea').value});
 $('bReplTry').onclick = ()=>{ const v=$('replTry').value.trim(); if(v) call({action:'repl_try',value:v}); };
 $('replTry').onkeydown = e=>{ if(e.key==='Enter') $('bReplTry').click(); };
+// ---- звуки вместо слов
+function renderSounds(s){
+  const c = s.snd || {};
+  if(document.activeElement !== $('sOn')) $('sOn').checked = !!c.sounds_on;
+  if(document.activeElement !== $('sMax')) $('sMax').value = c.sound_max_per_msg;
+  if(document.activeElement !== $('sSec')) $('sSec').value = c.sound_max_sec;
+  if(document.activeElement !== $('sVol')) $('sVol').value = c.sound_volume;
+  $('sVolv').textContent = $('sVol').value + '%';
+  const key = JSON.stringify(s.sounds || []);
+  if(last.sounds === key) return; last.sounds = key;
+  const box = $('sndList'); box.textContent = '';
+  if(!(s.sounds || []).length){ const m=document.createElement('span'); m.className='mut'; m.textContent='Звуков пока нет'; box.append(m); }
+  (s.sounds || []).forEach(it=>{   // {v: имя звука, w: слова из словаря, которые его включают}
+    const n = it.v, words = it.w || [];
+    const c=document.createElement('span'); c.className='chip'; c.title='Звук: '+n;
+    const p=document.createElement('button'); p.className='play'; p.textContent='▶'; p.title='Прослушать'; p.setAttribute('aria-label','Прослушать '+n);
+    p.onclick=()=>call({action:'snd_play',value:n});
+    const t=document.createElement('span'); t.textContent = words.length ? words.join(', ') : n;
+    if(!words.length){ const m=document.createElement('span'); m.className='snd'; m.textContent=' · без слова'; t.append(m); }
+    const b=document.createElement('button'); b.textContent='×'; b.title='Удалить'; b.setAttribute('aria-label','Удалить '+n);
+    b.onclick=()=>{ if(confirm('Удалить звук «'+(words[0]||n)+'»?')) call({action:'snd_del',value:n}).then(reloadRepl); };
+    c.append(p,t,b); box.append(c);
+  });
+}
+// «Мой словарь» открыт — подтянуть строки, которые звуки дописали сами
+async function reloadRepl(){
+  if(!$('replBox').open || document.activeElement === $('replArea')) return;
+  try{ const j = await post({action:'repl_get'}); if(j.ok) $('replArea').value = j.msg; }catch(e){}
+}
+function sndCfg(){
+  call({action:'snd_cfg', sounds_on:$('sOn').checked, sound_max_per_msg:$('sMax').value,
+        sound_max_sec:$('sSec').value, sound_volume:$('sVol').value});
+}
+['sOn','sMax','sSec','sVol'].forEach(id=>$(id).onchange = sndCfg);
+$('sVol').oninput = ()=>{ $('sVolv').textContent = $('sVol').value+'%'; };
+
+// любой mp3/ogg/wav -> WAV моно 16 бит 22050 Гц, до 15 с (декодирует сам браузер, программе не нужны библиотеки)
+async function toWav(file){
+  const RATE = 22050, MAXS = 15;
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  let buf;
+  try{ buf = await ctx.decodeAudioData(await file.arrayBuffer()); } finally { ctx.close(); }
+  const len = Math.min(Math.ceil(buf.duration * RATE), MAXS * RATE);
+  const off = new OfflineAudioContext(1, len, RATE);
+  const src = off.createBufferSource(); src.buffer = buf; src.connect(off.destination); src.start();
+  const pcm = (await off.startRendering()).getChannelData(0);
+  const dv = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const str = (o, s)=>{ for(let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); };
+  str(0,'RIFF'); dv.setUint32(4, 36 + pcm.length*2, true); str(8,'WAVE'); str(12,'fmt ');
+  dv.setUint32(16,16,true); dv.setUint16(20,1,true); dv.setUint16(22,1,true); dv.setUint32(24,RATE,true);
+  dv.setUint32(28,RATE*2,true); dv.setUint16(32,2,true); dv.setUint16(34,16,true); str(36,'data'); dv.setUint32(40,pcm.length*2,true);
+  for(let i=0;i<pcm.length;i++) dv.setInt16(44+i*2, Math.max(-1, Math.min(1, pcm[i])) * 32767, true);
+  const bytes = new Uint8Array(dv.buffer); let bin = '';
+  for(let i=0;i<bytes.length;i+=0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i+0x8000));
+  return btoa(bin);
+}
+// слово + файл -> звук сохранён и строка «слово = [звук]» в словаре; без слова — слово из имени файла
+async function addSound(f){
+  if(!f) return;
+  const word = $('sWord').value.trim() || f.name.replace(/\.[^.]+$/, '');
+  toast('Загружаю «'+word+'»…');
+  let data;
+  try{ data = await toWav(f); }catch(e){ toast('Не получилось прочитать файл как звук'); return; }
+  const j = await call({action:'snd_add', word, data});
+  if(j && j.ok){ $('sWord').value = ''; reloadRepl(); }
+}
+$('bSnd').onclick = ()=>$('sFile').click();
+$('sFile').onchange = ()=>{ const f = $('sFile').files[0]; $('sFile').value = ''; addSound(f); };
+$('sWord').onkeydown = e=>{ if(e.key==='Enter') $('bSnd').click(); };
+// перетаскивание файла на карточку
+['dragenter','dragover'].forEach(ev=>$('sCard').addEventListener(ev, e=>{ e.preventDefault(); $('sCard').classList.add('drop'); }));
+['dragleave','drop'].forEach(ev=>$('sCard').addEventListener(ev, e=>{ e.preventDefault(); $('sCard').classList.remove('drop'); }));
+$('sCard').addEventListener('drop', e=>{ const f = e.dataTransfer.files[0]; if(f) addSound(f); });
+
 $('allowIn').onkeydown = e=>{ if(e.key==='Enter') $('bAllow').click(); };
 $('banIn').onkeydown = e=>{ if(e.key==='Enter') $('bBan').click(); };
 

@@ -64,7 +64,7 @@ def start_panel(bot, port):
             if urlparse(self.path).path != "/api/action":
                 return self._send(404, "not found", "text/plain")
             try:
-                n = min(int(self.headers.get("Content-Length") or 0), 500000)
+                n = min(int(self.headers.get("Content-Length") or 0), 4000000)   # до ~3 МБ — загрузка звука
                 data = json.loads(self.rfile.read(n) or b"{}")
                 msg = bot.do_action(data)
                 self._send(200, {"ok": True, "msg": msg or ""})
