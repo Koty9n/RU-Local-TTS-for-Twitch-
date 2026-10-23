@@ -179,7 +179,8 @@
 ## Участники
 
 - [Koty9n](https://github.com/Koty9n) - автор проекта
-- [VasiliskBRO](https://github.com/VasiliskBRO) - участник проекта
+- [VasiliskBRO](https://github.com/VasiliskBRO) - со-автор проекта
+- [OldForever](https://github.com/oldforever) - участник проекта
 
 ## Лицензия
 
