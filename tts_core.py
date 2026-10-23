@@ -1585,7 +1585,7 @@ class Bot:
             "muted": muted,
             "price": self.state.get("price", 0),
             "has_reward": bool(self.state.get("reward_id")),
-            "sounds": self.sounds.names(),
+            "sounds": [{"v": n, "w": self.repl.sound_words(n)} for n in self.sounds.names()],
             "snd": {k: self.cfg.get(k, DEFAULT_CFG[k]) for k in
                     ("sounds_on", "sound_max_per_msg", "sound_max_sec", "sound_volume")},
             "log": list(self.logs)[-25:],
@@ -1649,11 +1649,21 @@ class Bot:
         elif act == "repl_try":
             return "Прочитаю так: " + (sounds.to_text(self.replace(clean(val, 300))) or "(пусто)")
         elif act == "snd_add":
+            # слово из чата + файл: звук сохраняется под этим словом, строка «слово = [звук]» пишется в словарь сама
             import base64
-            name = self.sounds.add(a.get("name", ""), base64.b64decode(str(a.get("data", ""))))
-            return f"Звук [{name}] добавлен. В словаре: слово = [{name}]"
+            word = str(a.get("word", "")).strip()
+            if word:
+                replacements.check_key(word)   # до сохранения файла — чтобы не остался звук без слова
+            name = sounds.safe_name(a.get("name") or word) or "звук " + time.strftime("%H%M%S")
+            name = self.sounds.add(name, base64.b64decode(str(a.get("data", ""))))
+            if not word:
+                return f"Звук [{name}] добавлен. В словаре: слово = [{name}]"
+            key = self.repl.set_sound(word, name)
+            return f"Готово: «{key}» в чате → звук"
         elif act == "snd_del":
-            return f"Звук [{self.sounds.remove(val)}] удалён"
+            name = self.sounds.remove(val)
+            self.repl.drop_sound(name)
+            return f"Звук [{name}] удалён (и его слово из словаря)"
         elif act == "snd_play":
             if not self.cfg.get("sounds_on", True):
                 return "Звуки выключены — включи галочку «Звуки вместо слов»"

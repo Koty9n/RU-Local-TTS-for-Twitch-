@@ -104,7 +104,7 @@ class Sounds:
         if p is None:
             if name not in self._warned:
                 self._warned.add(name)
-                self.log(f"Звук [{name}] не найден — добавь его в панели OBS («Словарь» → «Звуки»)")
+                self.log(f"Звук [{name}] не найден — добавь его в панели OBS на вкладке «Звуки»")
             return None
         try:
             mt = p.stat().st_mtime_ns

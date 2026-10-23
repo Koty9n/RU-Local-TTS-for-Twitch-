@@ -11,12 +11,13 @@ from pathlib import Path
 
 from sounds import SND, to_marks
 
+SOUND_ONLY = re.compile(r"^\[([^\[\]]{1,40})\]$")   # значение строки — только звук: «kekw = [смех]»
 # эмодзи и служебные символы к ним (вариант, склейка, флаги, цвет кожи)
 EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍⃣]+")
 HEAD = ("# Словарь замен перед озвучкой. Строка:  что = на что   (# — комментарий, регистр не важен)\n"
         "# Слова заменяются только целиком: «gg» не тронет «eggs». Эмодзи — где угодно в тексте.\n"
         "# Эти строки важнее готового словаря replacements_twitch.txt. Чтобы слово НЕ заменялось: gg = gg\n"
-        "# Звук вместо слова: kekw = [смех]  (звуки добавляются в панели OBS: «Словарь» → «Звуки»)\n")
+        "# Звук вместо слова: kekw = [смех]  (проще — в панели OBS на вкладке «Звуки»)\n")
 
 
 def _edge(ch, start):
@@ -31,6 +32,14 @@ def _edge(ch, start):
 
 def _norm_key(k):
     return re.sub(r"\s+", " ", k.strip().lower())
+
+
+def check_key(word):
+    """Слово из чата для строки словаря; без символов, которые ломают формат строки."""
+    key = _norm_key(word)
+    if not key or any(c in key for c in "=#[]\x01"):
+        raise ValueError("Слово не подходит: нужно без «=», «#» и скобок")
+    return key
 
 
 class Replacements:
@@ -77,8 +86,53 @@ class Replacements:
         self.map = m
         self.rx = re.compile("|".join(parts), re.IGNORECASE) if parts else None
         self._seen = self._stamp()
+        # какие слова своего словаря — «чистый» звук (kekw = [смех]): их показывает панель у каждого звука
+        self.sound_keys = {}
+        for k, v in self._own_lines():
+            sm = SOUND_ONLY.match(v)
+            if sm:
+                self.sound_keys.setdefault(sm.group(1).strip().lower(), []).append(k)
 
-    def apply(self, text, strip_emoji=True):
+    def _own_lines(self):
+        """(ключ, значение) из своего файла, без комментариев."""
+        out = []
+        for line in self.get_text().splitlines():
+            if line.lstrip().startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if _norm_key(k):
+                out.append((_norm_key(k), v.split(" #", 1)[0].strip()))
+        return out
+
+    def sound_words(self, name):
+        self._fresh()
+        return self.sound_keys.get(str(name).lower(), [])
+
+    def _rewrite(self, keep, add=""):
+        """Свой файл: оставить строки, для которых keep(ключ, значение) истинно, и дописать add."""
+        lines = []
+        for line in self.get_text().splitlines():
+            if not line.lstrip().startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                if _norm_key(k) and not keep(_norm_key(k), v.split(" #", 1)[0].strip()):
+                    continue
+            lines.append(line)
+        if add:
+            lines.append(add)
+        self.set_text("\n".join(lines))
+
+    def set_sound(self, word, name):
+        """«kekw = [смех]» в свой словарь; старая строка для того же слова заменяется."""
+        key = check_key(word)
+        self._rewrite(lambda k, v: k != key, f"{key} = [{name}]")
+        return key
+
+    def drop_sound(self, name):
+        """Убрать строки «слово = [имя]» (строки вроде «гол = гол [имя]» не трогаем)."""
+        n = str(name).lower()
+        self._rewrite(lambda k, v: not (SOUND_ONLY.match(v) and SOUND_ONLY.match(v).group(1).strip().lower() == n))
+
+    def _fresh(self):
         now = time.monotonic()
         if now - self._checked > 2:           # дату файлов смотрим не чаще раза в 2 с
             self._checked = now
@@ -88,6 +142,9 @@ class Replacements:
                 except Exception as e:
                     self._seen = self._stamp()
                     self.log(f"Словарь замен не прочитался: {e}")
+
+    def apply(self, text, strip_emoji=True):
+        self._fresh()
         text = text.replace(SND, " ")         # звук зритель вызывает только словами из словаря
         if self.rx is not None:
             text = self.rx.sub(self._sub, text)
