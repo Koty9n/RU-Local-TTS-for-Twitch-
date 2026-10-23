@@ -1,0 +1,14 @@
+{
+  "oauth_token": "",
+  "channel": "",
+  "default_voice": "glados",
+  "audio_device": null,
+  "max_chars": 200,
+  "user_cooldown_sec": 5,
+  "max_queue": 15,
+  "say_name": false,
+  "voice_cache": 2,
+  "aliases": {},
+  "accent_on": true,
+  "accent_model": "tiny2"
+}

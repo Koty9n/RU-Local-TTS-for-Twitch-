@@ -1,0 +1,10 @@
+piper-tts>=1.3
+sounddevice
+numpy
+ruaccent
+# GLaDOS (движок TeraTTS) — с v3.7 в том же окружении, что и всё остальное
+TeraTTS
+transliterate
+num2words
+# transformers 5.x ломает ударения RUAccent для слов не из словаря (нет token_type_ids)
+transformers<5

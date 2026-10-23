@@ -1,0 +1,23 @@
+# локальные данные программы (не заливать: токен, личные списки, скачанное)
+config.json
+error.log
+venv/
+venv_tera/
+tools/
+voices/
+_backup/
+__pycache__/
+*.pyc
+data/tera/
+data/ruaccent/
+data/install.log
+data/tera_worker.log
+data/installed.flag
+data/shortcut.flag
+data/voices.choice
+data/voices.txt
+data/state.json
+data/allowed_users.txt
+data/replacements.txt
+data/blacklist.txt
+data/blocked_users.txt
