@@ -1,5 +1,5 @@
 ﻿# Обновлялка TwitchTTS. Запускается через ОБНОВИТЬ.bat:
-#  - из папки, где программа уже стоит: берёт свежий TwitchTTS*.zip из «Загрузок»/рабочего стола (или спросит файл);
+#  - из папки, где программа уже стоит: берёт свежий архив ($ZipNames) из «Загрузок»/рабочего стола (или спросит файл);
 #  - из распакованного нового архива (первый раз, когда в старой версии обновлялки ещё нет): спросит старую папку.
 # Меняет только код и документацию. НЕ трогает: config.json (вход в Twitch), data\ (словари, списки, муты),
 # голоса, venv. Готовые списки data\*_twitch.txt копируются, только если их ещё нет (их могли поправить руками).
@@ -9,6 +9,8 @@ Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $Title = 'Обновление TwitchTTS'
 $Here = $PSScriptRoot
+# имена скачанного архива: старая раздача, релиз на GitHub и «Code → Download ZIP» (RU-Local-TTS-for-Twitch--main.zip)
+$ZipNames = @('TwitchTTS*.zip', 'RU-Local-TTS*.zip')
 $Owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }   # окна — поверх консоли
 $Tmp = $null
 
@@ -38,7 +40,7 @@ try {
         $dirs = @([Environment]::GetFolderPath('Desktop'), (Join-Path $env:USERPROFILE 'Downloads'))
         try { $dl = (New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path; if ($dl) { $dirs += $dl } } catch {}
         $zip = $dirs | Select-Object -Unique | Where-Object { $_ -and (Test-Path -LiteralPath $_) } |
-            ForEach-Object { Get-ChildItem -LiteralPath $_ -Filter 'TwitchTTS*.zip' -File -ErrorAction SilentlyContinue } |
+            ForEach-Object { $d = $_; $ZipNames | ForEach-Object { Get-ChildItem -LiteralPath $d -Filter $_ -File -ErrorAction SilentlyContinue } } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
         $Src = $null
         if ($zip) {
@@ -49,8 +51,8 @@ try {
         }
         if (-not $Src) {
             $dlg = New-Object System.Windows.Forms.OpenFileDialog
-            $dlg.Title = 'Выбери скачанный TwitchTTS.zip («Отмена» — выбрать уже распакованную папку)'
-            $dlg.Filter = 'Архив TwitchTTS (*.zip)|*.zip'
+            $dlg.Title = 'Выбери скачанный архив программы (.zip) («Отмена» — выбрать уже распакованную папку)'
+            $dlg.Filter = 'Архив программы (*.zip)|*.zip'
             if ($dlg.ShowDialog($Owner) -eq 'OK') { $Src = $dlg.FileName }
             else { $Src = PickFolder 'Выбери распакованную папку с НОВОЙ версией TwitchTTS' }
         }
