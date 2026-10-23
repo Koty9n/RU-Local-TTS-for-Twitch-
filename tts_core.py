@@ -25,6 +25,7 @@ import accent
 import glados_setup
 import ort_tune
 import replacements
+import sounds
 import twitch_auth
 
 
@@ -142,6 +143,11 @@ DEFAULT_CFG = {
     # словарь замен перед озвучкой: data/replacements.txt (свой) + data/replacements_*.txt (готовые)
     "replace_on": True,
     "replace_strip_emoji": True,  # эмодзи, которых нет в словаре, — убирать (движки их не читают)
+    # звуки вместо слов (в словаре «kekw = [смех]», файлы data/sounds/*.wav); всё правится в панели OBS
+    "sounds_on": True,
+    "sound_max_per_msg": 3,    # больше звуков в одном сообщении не играет (лишние выкидываются)
+    "sound_max_sec": 3,        # длиннее — обрезается с затуханием
+    "sound_volume": 80,        # % от громкости голоса (общий ползунок громкости тоже действует)
 }
 
 
@@ -726,6 +732,7 @@ class Player(threading.Thread):
         self.volume = 1.0
         self.current = ""
         self.current_id = None     # id сообщения Twitch, которое звучит сейчас (чтобы оборвать при удалении)
+        self.sounds = None         # sounds.Sounds — ставит Bot
 
     def clear(self):
         while True:
@@ -745,43 +752,66 @@ class Player(threading.Thread):
             self.skip.clear()
             if sd is None or (msg_id and msg_id in self.dropped):  # сообщение удалил модератор
                 continue
-            self.current = text[:80]
+            self.current = sounds.to_text(text)[:80]
             self.current_id = msg_id
             try:
-                if self.voices.is_tera(voice_name):
-                    self.play_tera(sd, voice_name, text)
-                    continue
-                base, fx_params = self.voices.resolve(voice_name)
-                voice = self.voices.get(base)
-                rate = voice.config.sample_rate
-                fx = GladosFx(rate, fx_params) if fx_params is not None else None
-                device = resolve_device(sd, self.get_device())
-
-                def open_stream(r):
-                    return sd.RawOutputStream(samplerate=r, channels=1, dtype="int16", device=device)
-
-                try:
-                    stream_cm = open_stream(int(rate * fx.pitch) if fx else rate)
-                except Exception:  # устройство не принимает «нестандартную» частоту — играем без повышения тона
-                    if fx:
-                        fx.pitch = 1.0
-                    stream_cm = open_stream(rate)
-                with stream_cm as stream:
-                    for raw in synth_chunks(voice, text, self.accents):
-                        if fx:
-                            raw = fx.process(raw)
-                        raw = apply_volume(raw, self.volume)
-                        for i in range(0, len(raw), 4096):
-                            if self.skip.is_set():
-                                break
-                            stream.write(raw[i:i + 4096])
-                        if self.skip.is_set():
-                            break
+                parts = self.sounds.split(text) if self.sounds else [("text", text)]
+                for kind, part in parts:   # «текст / звук / текст» по очереди; «Пропустить» обрывает всё
+                    if self.skip.is_set():
+                        break
+                    if kind == "sound":
+                        self.play_sound(sd, part)
+                    elif voice_name:
+                        self.play_text(sd, voice_name, part)
             except Exception as e:
                 self.log(f"Ошибка озвучки: {e}")
             finally:
                 self.current = ""
                 self.current_id = None
+
+    def play_sound(self, sd, name):
+        snd = self.sounds.get(name)
+        if snd is None:
+            return
+        rate, pcm = snd
+        with sd.RawOutputStream(samplerate=rate, channels=1, dtype="int16",
+                                device=resolve_device(sd, self.get_device())) as stream:
+            pcm = apply_volume(pcm, self.volume)
+            for i in range(0, len(pcm), 4096):
+                if self.skip.is_set():
+                    break
+                stream.write(pcm[i:i + 4096])
+
+    def play_text(self, sd, voice_name, text):
+        if self.voices.is_tera(voice_name):
+            self.play_tera(sd, voice_name, text)
+            return
+        base, fx_params = self.voices.resolve(voice_name)
+        voice = self.voices.get(base)
+        rate = voice.config.sample_rate
+        fx = GladosFx(rate, fx_params) if fx_params is not None else None
+        device = resolve_device(sd, self.get_device())
+
+        def open_stream(r):
+            return sd.RawOutputStream(samplerate=r, channels=1, dtype="int16", device=device)
+
+        try:
+            stream_cm = open_stream(int(rate * fx.pitch) if fx else rate)
+        except Exception:  # устройство не принимает «нестандартную» частоту — играем без повышения тона
+            if fx:
+                fx.pitch = 1.0
+            stream_cm = open_stream(rate)
+        with stream_cm as stream:
+            for raw in synth_chunks(voice, text, self.accents):
+                if fx:
+                    raw = fx.process(raw)
+                raw = apply_volume(raw, self.volume)
+                for i in range(0, len(raw), 4096):
+                    if self.skip.is_set():
+                        break
+                    stream.write(raw[i:i + 4096])
+                if self.skip.is_set():
+                    break
 
     def play_tera(self, sd, name, text):
         d = self.voices.tera_defs()[name.lower()]
@@ -859,6 +889,7 @@ class Bot:
         self.glados = glados_setup.GladosInstaller(BASE, DATA, self.log, accent=cfg.get("tera_accent") or "tiny2")
         self.player = Player(self.voices, lambda: self.cfg.get("audio_device"), self.dropped, self.log, self.tera, self.accents)
         self.player.volume = max(0.0, min(2.0, float(cfg.get("volume", 100)) / 100))
+        self.sounds = self.player.sounds = sounds.Sounds(DATA / "sounds", self.cfg, self.log)
         self.player.start()
         self.enabled = True
         self.status = "stopped"
@@ -1554,6 +1585,9 @@ class Bot:
             "muted": muted,
             "price": self.state.get("price", 0),
             "has_reward": bool(self.state.get("reward_id")),
+            "sounds": self.sounds.names(),
+            "snd": {k: self.cfg.get(k, DEFAULT_CFG[k]) for k in
+                    ("sounds_on", "sound_max_per_msg", "sound_max_sec", "sound_volume")},
             "log": list(self.logs)[-25:],
         }
 
@@ -1613,7 +1647,27 @@ class Bot:
             n = self.repl.set_text(a.get("value", ""))
             return f"Словарь сохранён: {n} замен всего (вместе с готовым)"
         elif act == "repl_try":
-            return "Прочитаю так: " + (self.replace(clean(val, 300)) or "(пусто)")
+            return "Прочитаю так: " + (sounds.to_text(self.replace(clean(val, 300))) or "(пусто)")
+        elif act == "snd_add":
+            import base64
+            name = self.sounds.add(a.get("name", ""), base64.b64decode(str(a.get("data", ""))))
+            return f"Звук [{name}] добавлен. В словаре: слово = [{name}]"
+        elif act == "snd_del":
+            return f"Звук [{self.sounds.remove(val)}] удалён"
+        elif act == "snd_play":
+            if not self.cfg.get("sounds_on", True):
+                return "Звуки выключены — включи галочку «Звуки вместо слов»"
+            self.player.q.put((None, sounds.SND + val.lower() + sounds.SND, None))
+        elif act == "snd_cfg":
+            lim = {"sound_max_per_msg": (0, 20), "sound_max_sec": (0.5, 30), "sound_volume": (0, 200)}
+            for k, (lo, hi) in lim.items():
+                if k in a:
+                    v = max(lo, min(hi, float(a[k])))
+                    self.cfg[k] = int(v) if k != "sound_max_sec" else round(v, 1)
+            if "sounds_on" in a:
+                self.cfg["sounds_on"] = bool(a["sounds_on"])
+            save_cfg(self.cfg)
+            return "Настройки звуков сохранены"
         elif act == "test":
             self.test_say(val or "Проверка звука", a.get("voice") or None)
         else:

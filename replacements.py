@@ -9,11 +9,14 @@ import re
 import time
 from pathlib import Path
 
+from sounds import SND, to_marks
+
 # эмодзи и служебные символы к ним (вариант, склейка, флаги, цвет кожи)
 EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍⃣]+")
 HEAD = ("# Словарь замен перед озвучкой. Строка:  что = на что   (# — комментарий, регистр не важен)\n"
         "# Слова заменяются только целиком: «gg» не тронет «eggs». Эмодзи — где угодно в тексте.\n"
-        "# Эти строки важнее готового словаря replacements_twitch.txt. Чтобы слово НЕ заменялось: gg = gg\n")
+        "# Эти строки важнее готового словаря replacements_twitch.txt. Чтобы слово НЕ заменялось: gg = gg\n"
+        "# Звук вместо слова: kekw = [смех]  (звуки добавляются в панели OBS: «Словарь» → «Звуки»)\n")
 
 
 def _edge(ch, start):
@@ -66,7 +69,7 @@ class Replacements:
                 k, _, v = line.partition("=")
                 k = _norm_key(k)
                 if k:
-                    m[k] = v.split(" #", 1)[0].strip()
+                    m[k] = to_marks(v.split(" #", 1)[0].strip())   # «[смех]» -> метка звука
         parts = []
         for k in sorted(m, key=len, reverse=True):   # длинные раньше: «gg wp» важнее «gg»
             body = r"\s+".join(re.escape(w) for w in k.split(" "))
@@ -85,6 +88,7 @@ class Replacements:
                 except Exception as e:
                     self._seen = self._stamp()
                     self.log(f"Словарь замен не прочитался: {e}")
+        text = text.replace(SND, " ")         # звук зритель вызывает только словами из словаря
         if self.rx is not None:
             text = self.rx.sub(self._sub, text)
         if strip_emoji:
