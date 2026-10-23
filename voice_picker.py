@@ -8,7 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import ttk
 
-from ui_theme import C, FONT, FONT_B, apply_theme
+from ui_theme import C, FONT, FONT_B, apply_theme, github_link
 
 GLADOS = "GLaDOS"
 PIPER_MB = 61
@@ -96,6 +96,7 @@ class Picker:
         self.btn_go.pack(side="right")
         self.btn_all = ttk.Button(bt, text="Все", command=self.toggle_all)
         self.btn_all.pack(side="right", padx=8)
+        github_link(bt).pack(side="left")
         self.refresh()
         w.bind("<Return>", lambda e: self.go())
         w.bind("<Escape>", lambda e: self.close())

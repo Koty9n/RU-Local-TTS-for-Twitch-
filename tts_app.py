@@ -16,7 +16,7 @@ import twitch_auth
 from panel_server import start_panel
 
 import voice_picker
-from ui_theme import C, FONT, FONT_B, MONO, apply_theme, card
+from ui_theme import C, FONT, FONT_B, MONO, apply_theme, card, github_link
 
 STATUS = {
     "connected": ("Подключён к чату", C["ok"]),
@@ -58,8 +58,9 @@ class TTSWindow:
         self.root.minsize(680, 640)
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
+        github_link(self.root).pack(side="bottom", anchor="e", padx=14, pady=(2, 6))   # видна на всех вкладках
         nb = ttk.Notebook(self.root)
-        nb.pack(fill="both", expand=True, padx=12, pady=12)
+        nb.pack(fill="both", expand=True, padx=12, pady=(12, 0))
         self.build_home(nb)
         self.build_voices(nb)
         self.build_settings(nb)
