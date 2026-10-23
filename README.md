@@ -175,7 +175,11 @@
 - Голоса Piper - [`rraaww/ru_piper`](https://huggingface.co/rraaww/ru_piper) ([piperhub.org](https://piperhub.org)), движок [Piper](https://github.com/OHF-Voice/piper1-gpl)
 - GLaDOS - [`TeraTTS`](https://huggingface.co/TeraTTS/glados2-g2p-vits), проект [KPEKEP/GLaDOS](https://github.com/KPEKEP/GLaDOS)
 - Ударения - [RUAccent](https://github.com/Den4ikAI/ruaccent)
-- 
+
+## Участники
+
+- [Koty9n](https://github.com/Koty9n) - автор проекта
+- [VasiliskBRO](https://github.com/VasiliskBRO) - участник проекта
 
 ## Лицензия
 
