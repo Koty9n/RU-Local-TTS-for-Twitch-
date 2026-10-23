@@ -1,5 +1,9 @@
 """Тёмная тема окон Twitch TTS (окно программы и выбор голосов). Только tkinter, без сторонних библиотек."""
+import tkinter as tk
+import webbrowser
 from tkinter import ttk
+
+GITHUB = "https://github.com/Koty9n/RU-Local-TTS-for-Twitch-"   # то же в tts_core.py (для панели OBS)
 
 # цвета — те же, что у панели OBS (panel_html.py), чтобы окна и док выглядели одной программой
 C = {"bg": "#18181b", "card": "#202024", "field": "#141417", "btn": "#2c2c33", "line": "#33333b",
@@ -51,6 +55,16 @@ def apply_theme(root):
     root.option_add("*TCombobox*Listbox.foreground", C["fg"])
     root.option_add("*TCombobox*Listbox.selectBackground", C["acc"])
     root.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
+
+
+def github_link(parent, bg=None):
+    """Строка-ссылка на страницу проекта: серая, при наведении фиолетовая, щелчок открывает браузер."""
+    lbl = tk.Label(parent, text="RU-Local-TTS for Twitch · GitHub ↗", bg=bg or C["bg"], fg=C["mut"],
+                   font=("Segoe UI", 9), cursor="hand2")
+    lbl.bind("<Button-1>", lambda e: webbrowser.open(GITHUB))
+    lbl.bind("<Enter>", lambda e: lbl.config(fg=C["acc_hi"]))
+    lbl.bind("<Leave>", lambda e: lbl.config(fg=C["mut"]))
+    return lbl
 
 
 def card(parent, **pack):

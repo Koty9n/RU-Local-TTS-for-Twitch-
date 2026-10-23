@@ -46,6 +46,8 @@ input[type=range]{width:100%;accent-color:var(--acc)}
 .chip button:hover{color:var(--bad)}
 details summary{cursor:pointer;color:var(--mut);margin-top:8px}
 #log{font:11px/1.5 ui-monospace,Consolas,monospace;color:var(--mut);max-height:60vh;overflow:auto;white-space:pre-wrap}
+#gh{display:block;text-align:center;color:var(--mut);font-size:11px;margin:4px 0 8px;text-decoration:none}
+#gh:hover{color:var(--acc-hi)}
 #msg{position:fixed;left:8px;right:8px;bottom:8px;background:var(--acc);color:#fff;padding:8px 12px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:3}
 </style></head><body>
 
@@ -140,6 +142,7 @@ details summary{cursor:pointer;color:var(--mut);margin-top:8px}
 <section class="pane" id="p-log">
   <div class="card"><div id="log"></div></div>
 </section>
+<a id="gh" href="https://github.com/Koty9n/RU-Local-TTS-for-Twitch-" target="_blank" rel="noopener">RU-Local-TTS for Twitch · GitHub ↗</a>
 <div id="msg"></div>
 
 <script>
@@ -157,6 +160,9 @@ async function call(body){
   try{ const j = await post(body); toast(j.msg || (j.ok ? '' : 'Ошибка')); refresh(); return j; }
   catch(e){ toast('Нет связи с приложением'); }
 }
+
+// ---- ссылка на GitHub: док OBS сам ссылки не открывает — просим программу открыть обычный браузер
+$('gh').onclick = e => { e.preventDefault(); call({action:'github'}); };
 
 // ---- вкладки (выбранная запоминается в этом браузере)
 function tab(t){

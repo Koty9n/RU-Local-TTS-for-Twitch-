@@ -17,6 +17,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import webbrowser
 from collections import OrderedDict, deque
 from pathlib import Path
 
@@ -36,6 +37,7 @@ def app_dir():
 
 BASE = app_dir()
 DATA = BASE / "data"
+GITHUB = "https://github.com/Koty9n/RU-Local-TTS-for-Twitch-"   # страница проекта (то же в ui_theme.py)
 VOICES_DIR = BASE / "voices"
 CONFIG_PATH = BASE / "config.json"
 DATA.mkdir(exist_ok=True)
@@ -1558,7 +1560,10 @@ class Bot:
     def do_action(self, a):
         act = a.get("action")
         val = str(a.get("value", "")).strip()
-        if act == "skip":
+        if act == "github":
+            webbrowser.open(GITHUB)
+            return "Открываю GitHub в браузере"
+        elif act == "skip":
             self.player.skip.set()
         elif act == "clear":
             self.player.clear()
