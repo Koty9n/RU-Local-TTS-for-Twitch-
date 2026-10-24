@@ -10,6 +10,35 @@ import os
 BELOW_NORMAL_PRIORITY_CLASS = 0x4000
 _applied = False
 
+# Пресеты нагрузки для окна «Настройки»: (ключ, название, cpu_threads, low_priority).
+# Пишутся в те же cpu_threads/low_priority в config.json, так что ручная правка файла по-прежнему работает.
+PRESETS = (
+    ("eco", "Экономный: слабый ПК или тяжёлые игры", 2, True),
+    ("balanced", "Сбалансированный (рекомендуется)", 3, True),
+    ("fast", "Быстрый: максимум скорости, нагрузка выше", 0, False),
+)
+CUSTOM_LABEL = "Свой (значения из config.json)"
+
+
+def preset_label(threads, low_priority):
+    """Название пресета, которому соответствуют текущие настройки, иначе CUSTOM_LABEL."""
+    try:
+        threads = int(threads or 0)
+    except (TypeError, ValueError):
+        return CUSTOM_LABEL
+    for _key, label, t, low in PRESETS:
+        if t == threads and low == bool(low_priority):
+            return label
+    return CUSTOM_LABEL
+
+
+def preset_values(label):
+    """(cpu_threads, low_priority) для названия пресета или None (для «Свой»)."""
+    for _key, name, t, low in PRESETS:
+        if name == label:
+            return t, low
+    return None
+
 
 def apply(threads=3, low_priority=True):
     global _applied

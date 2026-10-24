@@ -11,8 +11,10 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
 import glados_setup
+import ort_tune
 import tts_core as core
 import twitch_auth
+import updater
 from panel_server import start_panel
 
 import voice_picker
@@ -44,6 +46,8 @@ class TTSWindow:
         self.last_log = None
         self._asked_python = False
         self._glados_installed = glados_setup.engine_installed(core.BASE)
+        self._perf0 = (int(self.cfg.get("cpu_threads", 3) or 0), bool(self.cfg.get("low_priority", True)))
+        self._update_busy = False
 
         self.root = tk.Tk()
         self.root.title("Twitch TTS")
@@ -66,6 +70,9 @@ class TTSWindow:
         self.build_settings(nb)
 
         self.poll()
+        self.announce_update_done()
+        if self.cfg.get("auto_update", True):   # через пару секунд после старта, чтобы не мешать загрузке движков
+            self.root.after(5000, lambda: self.check_update(manual=False))
         self.bot.preload_engines()   # GLaDOS и ударения грузятся в фоне сразу, а не при первой фразе
         self.bot.ensure_glados(on_done=lambda ok: self.ui_q.put(lambda: self.glados_done(ok)))  # первый запуск: поставить GLaDOS
         if not self.bot.token:  # первый запуск: сразу ведём по шагам входа
@@ -404,6 +411,8 @@ class TTSWindow:
         self.v_auto = tk.BooleanVar(value=bool(c.get("autoconnect", True)))
         self.v_acc = tk.BooleanVar(value=bool(c.get("accent_on", True)))
         self.v_accm = tk.StringVar(value=c.get("accent_model", "tiny2"))
+        self.v_perf = tk.StringVar(value=ort_tune.preset_label(c.get("cpu_threads", 3), c.get("low_priority", True)))
+        self.v_autoupd = tk.BooleanVar(value=bool(c.get("auto_update", True)))
 
         def row(r, label, widget):
             ttk.Label(f, text=label).grid(row=r, column=0, sticky="w", pady=4, padx=(0, 10))
@@ -433,13 +442,28 @@ class TTSWindow:
         ttk.Combobox(acc, textvariable=self.v_accm, values=ACCENT_MODELS, width=10).pack(side="left", padx=8)
         acc.grid(row=9, column=1, sticky="w", pady=2)
 
+        perf = ttk.Frame(f)
+        perf.columnconfigure(0, weight=1)
+        ttk.Combobox(perf, textvariable=self.v_perf, state="readonly",
+                     values=[p[1] for p in ort_tune.PRESETS] + [ort_tune.CUSTOM_LABEL]).grid(row=0, column=0, sticky="ew")
+        ttk.Label(perf, text="Сколько процессора берёт озвучка. Применяется после перезапуска программы.",
+                  style="Mut.TLabel", wraplength=520).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        row(10, "Нагрузка на ПК", perf)
+
+        upd = ttk.Frame(f)
+        ttk.Checkbutton(upd, text="Автоматически проверять обновления при запуске", variable=self.v_autoupd).pack(side="left")
+        ttk.Button(upd, text="Проверить сейчас", command=lambda: self.check_update(manual=True)).pack(side="left", padx=8)
+        upd.grid(row=11, column=1, sticky="w", pady=2)
+        ttk.Label(f, text="Версия: " + (updater.local_version(core.BASE) or "неизвестна"),
+                  style="Mut.TLabel").grid(row=12, column=1, sticky="w")
+
         b = ttk.Frame(f)
-        b.grid(row=10, column=0, columnspan=2, sticky="w", pady=14)
+        b.grid(row=13, column=0, columnspan=2, sticky="w", pady=14)
         ttk.Button(b, text="Сохранить", style="Accent.TButton", command=self.save_settings).pack(side="left")
         ttk.Button(b, text="Проверить токен", command=self.check_token).pack(side="left", padx=8)
         ttk.Label(f, text="В поле токена можно вставить весь адрес после авторизации — "
                           "токен вырежется сам.",
-                  style="Mut.TLabel", wraplength=680).grid(row=11, column=0, columnspan=2, sticky="w")
+                  style="Mut.TLabel", wraplength=680).grid(row=14, column=0, columnspan=2, sticky="w")
 
     def save_settings(self):
         try:
@@ -455,7 +479,11 @@ class TTSWindow:
                 "autoconnect": bool(self.v_auto.get()),
                 "accent_on": bool(self.v_acc.get()),
                 "accent_model": self.v_accm.get().strip() or "tiny2",
+                "auto_update": bool(self.v_autoupd.get()),
             }
+            preset = ort_tune.preset_values(self.v_perf.get())   # «Свой» — оставляем cpu_threads/low_priority из config.json
+            if preset:
+                new["cpu_threads"], new["low_priority"] = preset
         except ValueError:
             messagebox.showerror("Настройки", "Проверь числовые поля.")
             return
@@ -468,7 +496,99 @@ class TTSWindow:
         self.refresh_voices()
         if was:
             self.connect()
-        messagebox.showinfo("Настройки", "Сохранено.")
+        perf_now = (int(self.cfg.get("cpu_threads", 3) or 0), bool(self.cfg.get("low_priority", True)))
+        messagebox.showinfo("Настройки", "Сохранено." + (
+            "\nНагрузка на ПК поменяется после перезапуска программы." if perf_now != self._perf0 else ""))
+
+    # ---------- обновление программы ----------
+    def announce_update_done(self):
+        """После самообновления скрипт оставляет data/updated.flag — пишем об этом в журнал."""
+        flag = core.DATA / "updated.flag"
+        try:
+            ver = flag.read_text(encoding="utf-8-sig").strip()
+            flag.unlink()
+            self.bot.log(f"Программа обновлена до версии {ver or updater.local_version(core.BASE)}")
+        except OSError:
+            pass
+
+    def check_update(self, manual):
+        """Проверка в фоне. manual=True — по кнопке: сообщает и «у вас последняя», и ошибки; автоматическая молчит."""
+        if self._update_busy:
+            return
+        self._update_busy = True
+
+        def done(info, err):
+            self._update_busy = False
+            if err:
+                if manual:
+                    messagebox.showerror("Обновление", f"Не удалось проверить обновления.\nПроверьте интернет.\n\n{err}")
+                else:
+                    self.bot.log(f"Проверка обновлений не удалась: {err}")
+                return
+            if info is None:
+                if manual:
+                    messagebox.showinfo("Обновление", "У вас последняя версия: " + (updater.local_version(core.BASE) or "?"))
+                return
+            if not manual and info["version"] == self.cfg.get("skipped_version"):
+                return
+            self.show_update_dialog(info)
+        self.run_bg(lambda: updater.check(core.BASE), done)
+
+    def show_update_dialog(self, info):
+        """Окно «Вышла новая версия»: обновить сейчас / позже / пропустить эту версию."""
+        win = tk.Toplevel(self.root)
+        win.title("Доступно обновление")
+        win.configure(bg=C["bg"])
+        win.transient(self.root)
+        win.resizable(False, False)
+        body = ttk.Frame(win, padding=16)
+        body.pack(fill="both", expand=True)
+        ttk.Label(body, text="Вышла новая версия приложения", font=FONT_B).pack(anchor="w")
+        ttk.Label(body, text=f"Новая: {info['version']}      Сейчас: {info.get('current', '?')}",
+                  style="Mut.TLabel").pack(anchor="w", pady=(4, 8))
+        notes = (info.get("notes") or "").strip()
+        if notes:
+            notes = notes if len(notes) <= 600 else notes[:600].rstrip() + "…"
+            ttk.Label(body, text=notes, wraplength=460, justify="left").pack(anchor="w", pady=(0, 8))
+        ttk.Label(body, text="Программа закроется, сама скачает и установит обновление и запустится снова. "
+                             "Вход в Twitch, настройки, словари и голоса сохранятся.",
+                  style="Mut.TLabel", wraplength=460, justify="left").pack(anchor="w")
+        if self.bot.running():
+            ttk.Label(body, text="Сейчас идёт подключение к чату: озвучка прервётся на время обновления.",
+                      style="Mut.TLabel", wraplength=460, justify="left").pack(anchor="w", pady=(6, 0))
+        btns = ttk.Frame(body)
+        btns.pack(fill="x", pady=(14, 0))
+
+        def now():
+            win.destroy()
+            self.apply_update(info)
+
+        def later():
+            win.destroy()
+
+        def skip():
+            self.cfg["skipped_version"] = info["version"]   # не через apply_cfg: он сбросил бы refresh-токен Twitch
+            core.save_cfg(self.cfg)
+            win.destroy()
+        ttk.Button(btns, text="Обновить сейчас", style="Accent.TButton", command=now).pack(side="left")
+        ttk.Button(btns, text="Позже", command=later).pack(side="left", padx=8)
+        ttk.Button(btns, text="Пропустить эту версию", command=skip).pack(side="right")
+        win.protocol("WM_DELETE_WINDOW", later)
+        win.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - win.winfo_width()) // 2
+        y = self.root.winfo_rooty() + max(40, (self.root.winfo_height() - win.winfo_height()) // 3)
+        win.geometry(f"+{max(0, x)}+{max(0, y)}")
+        win.grab_set()
+
+    def apply_update(self, info):
+        """Запускает отдельный скрипт обновления и закрывает программу, чтобы он мог заменить файлы."""
+        try:
+            updater.start_update(core.BASE, info)
+        except Exception as e:
+            messagebox.showerror("Обновление", f"Не удалось запустить обновление:\n{e}\n\n"
+                                               "Можно обновиться вручную: скачайте архив со страницы проекта и запустите ОБНОВИТЬ.bat.")
+            return
+        self.on_close()
 
     # ---------- мастер входа в Twitch: напрямую (основной) или через twitchtokengenerator.com (запасной) ----------
     def twitch_login_wizard(self):
