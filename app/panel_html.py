@@ -55,6 +55,8 @@ input[type=checkbox]{accent-color:var(--acc);width:16px;height:16px;margin:0}
 .chip .snd{color:var(--mut);font-size:11px}
 #sCard.drop{border-color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc)}
 .chip .play:hover{color:var(--acc-hi)}
+.chip.rv{padding:2px 10px;gap:6px;cursor:pointer}
+.chip.rv.off{color:var(--mut)}
 #gh{display:block;text-align:center;color:var(--mut);font-size:11px;margin:4px 0 8px;text-decoration:none}
 #gh:hover{color:var(--acc-hi)}
 #msg{position:fixed;left:8px;right:8px;bottom:8px;background:var(--acc);color:#fff;padding:8px 12px;border-radius:6px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:3}
@@ -91,6 +93,11 @@ input[type=checkbox]{accent-color:var(--acc);width:16px;height:16px;margin:0}
       <input type="text" id="testtxt" placeholder="Текст для проверки" class="grow">
       <button id="bTest" title="Озвучить">Озвучить</button>
     </div>
+  </div>
+  <div class="card">
+    <div class="row"><h2 class="grow" style="margin:0">Случайный голос</h2><label class="chk"><input type="checkbox" id="rOn"> Включён</label></div>
+    <div class="chips" id="rList"></div>
+    <div class="hint">Каждое сообщение — случайным голосом из отмеченных. Кто выбрал себе голос через !tts, звучит своим.</div>
   </div>
 </section>
 
@@ -247,6 +254,7 @@ function render(s){
     s.voices.forEach(v=>{ const o=document.createElement('option'); o.value=v; o.textContent=v; sel.append(o); });
   }
   if(document.activeElement !== $('voice')) $('voice').value = s.default_voice;
+  renderRandom(s);
   if(document.activeElement !== $('price') && s.price) $('price').value = s.price;
   $('rinfo').textContent = s.has_reward ? 'Награда привязана' : 'Награда не привязана';
   chips('allowList', s.allowed, 'allow_del');
@@ -284,6 +292,22 @@ $('vol').oninput = ()=>{ $('volv').textContent = $('vol').value+'%'; };
 $('vol').onchange = ()=>call({action:'volume',value:$('vol').value});
 $('voice').onchange = ()=>call({action:'default_voice',value:$('voice').value});
 $('bTest').onclick = ()=>call({action:'test',value:$('testtxt').value,voice:$('voice').value});
+// ---- случайный голос: общая галочка + какие голоса участвуют
+function renderRandom(s){
+  $('rOn').checked = !!s.random_voice;
+  const pool = s.random_pool || [];
+  const key = JSON.stringify([s.voices, pool]);
+  if(last.random === key) return; last.random = key;
+  const box = $('rList'); box.textContent = '';
+  s.voices.forEach(v=>{
+    const use = pool.includes(v);
+    const c=document.createElement('label'); c.className='chip rv' + (use ? '' : ' off');
+    const b=document.createElement('input'); b.type='checkbox'; b.checked=use;
+    b.onchange=()=>call({action:'random_use',value:v,use:b.checked});
+    c.append(b, v); box.append(c);
+  });
+}
+$('rOn').onchange = ()=>call({action:'random_on',on:$('rOn').checked});
 $('bPrice').onclick = ()=>call({action:'price',value:$('price').value});
 $('bReward').onclick = ()=>call({action:'reward_create',value:$('price').value||'500'});
 $('bAllow').onclick = async ()=>{ const v=$('allowIn').value.trim(); if(v){ await call({action:'allow_add',value:v}); $('allowIn').value=''; } };

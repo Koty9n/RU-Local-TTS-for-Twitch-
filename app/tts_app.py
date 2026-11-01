@@ -32,6 +32,13 @@ DEFAULT_DEVICE = "По умолчанию (системное)"
 ACCENT_MODELS = ["tiny2", "tiny", "turbo3.1", "turbo3"]
 
 
+def plural(n, one, few, many):
+    """1 голос, 2 голоса, 5 голосов."""
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    return few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
+
+
 class TTSWindow:
     def __init__(self):
         try:  # чёткий текст на HiDPI-экранах
@@ -54,8 +61,8 @@ class TTSWindow:
         apply_theme(self.root)
         self._tick = 0
         self._ready_key = None
-        try:  # иконка окна (assets/icon.ico лежит рядом с программой)
-            self.root.iconbitmap(str(core.BASE / "assets" / "icon.ico"))
+        try:  # иконка окна (app\assets\icon.ico)
+            self.root.iconbitmap(str(core.CODE / "assets" / "icon.ico"))
         except Exception:
             pass
         self.root.geometry("780x720")
@@ -130,13 +137,19 @@ class TTSWindow:
         # 3) OBS
         box = card(f)
         ttk.Label(box, text="ПАНЕЛЬ В OBS", style="H.TLabel").pack(anchor="w")
-        ttk.Label(box, text="OBS → Док-панели → Пользовательские док-панели браузера → имя «TTS», адрес:",
-                  style="CardMut.TLabel", wraplength=680).pack(anchor="w", pady=(4, 6))
+        hint = ttk.Label(box, text="OBS → Док-панели → Пользовательские док-панели браузера → имя «TTS», адрес:",
+                         style="CardMut.TLabel")
+        hint.pack(fill="x", pady=(4, 6))
+        hint.bind("<Configure>", lambda e: hint.configure(wraplength=e.width))   # перенос по ширине окна
         r2 = ttk.Frame(box, style="Card.TFrame")
         r2.pack(fill="x")
-        self.url_var = tk.StringVar(value=self.url)
+        self.url_var = tk.StringVar()
+        self.key_shown = False
         ttk.Entry(r2, textvariable=self.url_var, state="readonly").pack(side="left", fill="x", expand=True)
+        self.btn_key = ttk.Button(r2, text="Показать", command=self.toggle_key)
+        self.btn_key.pack(side="left", padx=(8, 0))
         ttk.Button(r2, text="Копировать", command=self.copy_url).pack(side="left", padx=(8, 0))
+        self.show_url()
         ttk.Label(box, text="В адресе секретный ключ — не показывай его на стриме.", style="CardMut.TLabel"
                   ).pack(anchor="w", pady=(6, 0))
 
@@ -166,7 +179,7 @@ class TTSWindow:
         else:
             gl = (False, "не установлена")
         n = len(self.bot.voices.names())
-        vo = (n > 0, f"{n}: " + ", ".join(self.bot.voices.names()) if n else "нет ни одного")
+        vo = (n > 0, f"{n} {plural(n, 'голос', 'голоса', 'голосов')} · список — на вкладке «Голоса»" if n else "нет ни одного")
         rows = {"twitch": tw, "glados": gl, "voices": vo}
         key = repr(rows)
         if key == self._ready_key:
@@ -182,6 +195,16 @@ class TTSWindow:
                     b.pack(side="right")
                 elif ok is not False and b.winfo_ismapped():
                     b.pack_forget()
+
+    def show_url(self):
+        """Ключ в адресе — точками, пока не нажали «Показать»: окно может попасть на стрим."""
+        key = self.cfg["panel_key"]
+        self.url_var.set(self.url if self.key_shown else self.url.replace(key, "•" * len(key)))
+        self.btn_key.configure(text="Скрыть" if self.key_shown else "Показать")
+
+    def toggle_key(self):
+        self.key_shown = not self.key_shown
+        self.show_url()
 
     def copy_url(self):
         self.root.clipboard_clear()
@@ -208,7 +231,7 @@ class TTSWindow:
 
         mid = ttk.Frame(f)
         mid.pack(fill="both", expand=True, pady=8)
-        self.voice_list = tk.Listbox(mid, font=("Segoe UI", 11), activestyle="none", bg=C["field"], fg=C["fg"],
+        self.voice_list = tk.Listbox(mid, font=("Segoe UI", 11), activestyle="none", height=5, bg=C["field"], fg=C["fg"],
                                      selectbackground=C["acc"], selectforeground="#ffffff", relief="flat",
                                      highlightthickness=1, highlightbackground=C["line"], highlightcolor=C["acc"])
         sb = ttk.Scrollbar(mid, command=self.voice_list.yview)
@@ -216,13 +239,23 @@ class TTSWindow:
         sb.pack(side="right", fill="y")
         self.voice_list.pack(side="left", fill="both", expand=True)
 
+        # слева — пополнить список, справа — что сделать с выбранным голосом
         btns = ttk.Frame(f)
         btns.pack(fill="x")
-        ttk.Button(btns, text="Скачать голоса…", style="Accent.TButton", command=self.download_voices).pack(side="left")
-        ttk.Button(btns, text="Добавить свой…", command=self.add_voice).pack(side="left", padx=6)
-        ttk.Button(btns, text="Удалить", command=self.remove_voice).pack(side="left")
-        ttk.Button(btns, text="По умолчанию", command=self.set_default_voice).pack(side="left", padx=6)
-        ttk.Button(btns, text="Обновить", command=self.refresh_voices).pack(side="left")
+        ttk.Button(btns, text="Скачать голоса…", style="SlimAccent.TButton", command=self.download_voices).pack(side="left")
+        ttk.Button(btns, text="Добавить свой…", style="Slim.TButton", command=self.add_voice).pack(side="left", padx=6)
+        ttk.Button(btns, text="⟳", width=3, style="Slim.TButton", command=self.refresh_voices).pack(side="left")   # перечитать папку voices
+        ttk.Button(btns, text="Удалить", style="Danger.TButton", command=self.remove_voice).pack(side="right")
+        ttk.Button(btns, text="По умолчанию", style="Slim.TButton", command=self.set_default_voice).pack(side="right", padx=6)
+
+        rnd = ttk.Frame(f)
+        rnd.pack(fill="x", pady=(8, 0))
+        self.v_random = tk.BooleanVar(value=bool(self.cfg.get("random_voice")))
+        ttk.Checkbutton(rnd, text="Случайный голос на каждое сообщение", variable=self.v_random,
+                        command=self.toggle_random).pack(side="left")
+        ttk.Button(rnd, text="Убрать из случайных / вернуть", command=self.toggle_random_voice).pack(side="left", padx=8)
+        self.random_lbl = ttk.Label(f, text="", style="Mut.TLabel", wraplength=680)
+        self.random_lbl.pack(anchor="w", pady=(2, 0))
 
         st = ttk.Frame(f)
         st.pack(fill="x", pady=(8, 0))
@@ -243,10 +276,36 @@ class TTSWindow:
         self.bot.voices.scan()
         self.voice_list.delete(0, "end")
         default = (self.cfg.get("default_voice") or "").lower()
+        pool = self.bot.random_pool()
+        fx = self.bot.voices.fx_defs()
         for n in self.bot.voices.names():
-            self.voice_list.insert("end", n + ("   ← по умолчанию" if n == default else ""))
-        if hasattr(self, "dev_combo"):
+            self.voice_list.insert("end", n + ("   ✨ эффект" if n in fx else "")
+                                   + ("   ← по умолчанию" if n == default else "")
+                                   + ("" if n in pool else "   · не в случайных"))
+            if n in fx:
+                self.voice_list.itemconfigure("end", foreground=C["acc_hi"])
+        self._random_key = self.random_key()
+        self.random_lbl.config(text=self.random_hint())
+        if hasattr(self, "v_voice_combo"):   # «Настройки» строятся позже «Голосов»
             self.v_voice_combo["values"] = self.bot.voices.names()
+
+    def random_hint(self):
+        base = "Кто выбрал себе голос через !tts, звучит своим. Те же галочки — в панели OBS."
+        if not self.cfg.get("random_voice"):
+            return base
+        models = self.bot.random_models()
+        n, keep = len(models), min(len(models), core.RANDOM_CACHE_MAX)
+        if not n:
+            return base
+        mb = sum(self.bot.voices.paths[m].stat().st_size for m in models[:keep]) // 2**20
+        if n <= keep:
+            return (f"В памяти держатся все {n} {plural(n, 'модель', 'модели', 'моделей')} случайного голоса "
+                    f"(~{mb} МБ) — голос меняется без пауз. " + base)
+        return (f"В случайных {n} {plural(n, 'модель', 'модели', 'моделей')}, в памяти помещается {keep} (~{mb} МБ) — иногда перед фразой пауза 2–4 с. "
+                f"Убери лишние кнопкой «Убрать из случайных». " + base)
+
+    def random_key(self):
+        return bool(self.cfg.get("random_voice")), tuple(self.cfg.get("random_skip") or [])
 
     def selected_voice(self):
         sel = self.voice_list.curselection()
@@ -300,6 +359,27 @@ class TTSWindow:
             self.v_voice.set(n)
             self.refresh_voices()
 
+    def toggle_random(self):
+        self.bot.set_random(on=self.v_random.get())
+        self.refresh_voices()
+
+    def toggle_random_voice(self):
+        n = self.selected_voice()
+        if not n:
+            messagebox.showinfo("Случайный голос", "Сначала выбери голос в списке.")
+            return
+        self.bot.set_random(voice=n, use=n not in self.bot.random_pool())
+        self.refresh_voices()
+
+    def sync_random(self):
+        """Галочки могли поменять в панели OBS — подтягиваем в окно (сравниваем только конфиг: диск не трогаем)."""
+        if self.random_key() != getattr(self, "_random_key", None):
+            self.v_random.set(bool(self.cfg.get("random_voice")))
+            sel = self.voice_list.curselection()
+            self.refresh_voices()
+            if sel:
+                self.voice_list.selection_set(sel[0])
+
     def test_voice(self):
         try:
             self.bot.test_say(self.test_var.get(), self.selected_voice())
@@ -338,7 +418,7 @@ class TTSWindow:
 
         def work():
             import subprocess
-            p = subprocess.Popen([str(py), "-X", "utf8", str(core.BASE / "install_voices.py"), str(core.VOICES_DIR)] + piper,
+            p = subprocess.Popen([str(py), "-X", "utf8", str(core.CODE / "install_voices.py"), str(core.VOICES_DIR)] + piper,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=str(core.BASE),
                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
             for raw in p.stdout:
@@ -395,8 +475,14 @@ class TTSWindow:
 
     # ---------- вкладка «Настройки» ----------
     def build_settings(self, nb):
-        f = ttk.Frame(nb, padding=(0, 12, 0, 0))
-        nb.add(f, text="Настройки")
+        outer = ttk.Frame(nb, padding=(0, 12, 0, 0))
+        nb.add(outer, text="Настройки")
+        # кнопки прибиты к низу вкладки — видны всегда; остальное прокручивается, если окно низкое
+        b = ttk.Frame(outer)
+        b.pack(side="bottom", fill="x", pady=(10, 4))
+        ttk.Button(b, text="Сохранить", style="Accent.TButton", command=self.save_settings).pack(side="left")
+        ttk.Button(b, text="Проверить токен", command=self.check_token).pack(side="left", padx=8)
+        f = self.scroll_area(outer)
         f.columnconfigure(1, weight=1)
         c = self.cfg
 
@@ -414,31 +500,34 @@ class TTSWindow:
         self.v_perf = tk.StringVar(value=ort_tune.preset_label(c.get("cpu_threads", 3), c.get("low_priority", True)))
         self.v_autoupd = tk.BooleanVar(value=bool(c.get("auto_update", True)))
 
-        def row(r, label, widget):
-            ttk.Label(f, text=label).grid(row=r, column=0, sticky="w", pady=4, padx=(0, 10))
-            widget.grid(row=r, column=1, sticky="ew", pady=4)
+        def row(r, label, widget, sticky="ew", top=False):
+            ttk.Label(f, text=label).grid(row=r, column=0, sticky="nw" if top else "w",
+                                          pady=(10, 4) if top else 4, padx=(0, 10))
+            widget.grid(row=r, column=1, sticky=sticky, pady=4)
 
         tok = ttk.Frame(f)
         tok.columnconfigure(0, weight=1)
         ttk.Entry(tok, textvariable=self.v_token, show="•").grid(row=0, column=0, sticky="ew")
         ttk.Button(tok, text="Войти через Twitch…", command=self.twitch_login_wizard).grid(row=0, column=1, padx=(6, 0))
-        row(0, "Токен Twitch", tok)
+        ttk.Label(tok, text="Можно вставить весь адрес после авторизации — токен вырежется сам.",
+                  style="Mut.TLabel", wraplength=400).grid(row=1, column=0, columnspan=2, sticky="w", pady=(2, 0))
+        row(0, "Токен Twitch", tok, top=True)
         row(1, "Канал", ttk.Entry(f, textvariable=self.v_chan))
         self.v_voice_combo = ttk.Combobox(f, textvariable=self.v_voice, values=self.bot.voices.names())
         row(2, "Голос по умолчанию", self.v_voice_combo)
         self.dev_combo = ttk.Combobox(f, textvariable=self.v_dev, state="readonly",
                                       values=[DEFAULT_DEVICE] + core.list_output_devices())
         row(3, "Устройство вывода звука", self.dev_combo)
-        row(4, "Макс. длина сообщения", ttk.Entry(f, textvariable=self.v_maxc, width=8))
-        row(5, "Пауза на зрителя, сек", ttk.Entry(f, textvariable=self.v_cd, width=8))
-        row(6, "Макс. очередь", ttk.Entry(f, textvariable=self.v_q, width=8))
+        row(4, "Макс. длина сообщения", ttk.Entry(f, textvariable=self.v_maxc, width=8), sticky="w")
+        row(5, "Пауза на зрителя, сек", ttk.Entry(f, textvariable=self.v_cd, width=8), sticky="w")
+        row(6, "Макс. очередь", ttk.Entry(f, textvariable=self.v_q, width=8), sticky="w")
         ttk.Checkbutton(f, text="Читать ник перед сообщением", variable=self.v_name).grid(
             row=7, column=1, sticky="w", pady=2)
         ttk.Checkbutton(f, text="Подключаться к чату при запуске", variable=self.v_auto).grid(
             row=8, column=1, sticky="w", pady=2)
 
         acc = ttk.Frame(f)
-        ttk.Checkbutton(acc, text="Ставить ударения (RUAccent) в голосах Piper", variable=self.v_acc).pack(side="left")
+        ttk.Checkbutton(acc, text="Ударения (RUAccent) в голосах Piper", variable=self.v_acc).pack(side="left")
         ttk.Combobox(acc, textvariable=self.v_accm, values=ACCENT_MODELS, width=10).pack(side="left", padx=8)
         acc.grid(row=9, column=1, sticky="w", pady=2)
 
@@ -447,23 +536,47 @@ class TTSWindow:
         ttk.Combobox(perf, textvariable=self.v_perf, state="readonly",
                      values=[p[1] for p in ort_tune.PRESETS] + [ort_tune.CUSTOM_LABEL]).grid(row=0, column=0, sticky="ew")
         ttk.Label(perf, text="Сколько процессора берёт озвучка. Применяется после перезапуска программы.",
-                  style="Mut.TLabel", wraplength=520).grid(row=1, column=0, sticky="w", pady=(2, 0))
-        row(10, "Нагрузка на ПК", perf)
+                  style="Mut.TLabel", wraplength=400).grid(row=1, column=0, sticky="w", pady=(2, 0))
+        row(10, "Нагрузка на ПК", perf, top=True)
 
-        upd = ttk.Frame(f)
-        ttk.Checkbutton(upd, text="Автоматически проверять обновления при запуске", variable=self.v_autoupd).pack(side="left")
-        ttk.Button(upd, text="Проверить сейчас", command=lambda: self.check_update(manual=True)).pack(side="left", padx=8)
-        upd.grid(row=11, column=1, sticky="w", pady=2)
-        ttk.Label(f, text="Версия: " + (updater.local_version(core.BASE) or "неизвестна"),
-                  style="Mut.TLabel").grid(row=12, column=1, sticky="w")
+        ttk.Checkbutton(f, text="Проверять обновления при запуске", variable=self.v_autoupd).grid(
+            row=11, column=1, sticky="w", pady=2)
+        ver = ttk.Frame(f)
+        ttk.Label(ver, text="Версия: " + (updater.local_version(core.BASE) or "неизвестна"),
+                  style="Mut.TLabel").pack(side="left")
+        ttk.Button(ver, text="Проверить сейчас", command=lambda: self.check_update(manual=True)).pack(side="left", padx=8)
+        ver.grid(row=12, column=1, sticky="w", pady=(4, 2))
 
-        b = ttk.Frame(f)
-        b.grid(row=13, column=0, columnspan=2, sticky="w", pady=14)
-        ttk.Button(b, text="Сохранить", style="Accent.TButton", command=self.save_settings).pack(side="left")
-        ttk.Button(b, text="Проверить токен", command=self.check_token).pack(side="left", padx=8)
-        ttk.Label(f, text="В поле токена можно вставить весь адрес после авторизации — "
-                          "токен вырежется сам.",
-                  style="Mut.TLabel", wraplength=680).grid(row=14, column=0, columnspan=2, sticky="w")
+    def scroll_area(self, parent):
+        """Рамка с прокруткой: полоса и колесо мыши появляются, только когда содержимое не влезает."""
+        cv = tk.Canvas(parent, bg=C["bg"], highlightthickness=0)
+        sb = ttk.Scrollbar(parent, orient="vertical", command=cv.yview)
+        cv.configure(yscrollcommand=sb.set)
+        cv.pack(side="left", fill="both", expand=True)
+        inner = ttk.Frame(cv)
+        win = cv.create_window(0, 0, window=inner, anchor="nw")
+
+        def fits():
+            return inner.winfo_reqheight() <= cv.winfo_height()
+
+        def relayout(_=None):
+            cv.itemconfigure(win, width=cv.winfo_width())
+            cv.configure(scrollregion=(0, 0, 0, inner.winfo_reqheight()))
+            if fits():
+                sb.pack_forget()
+                cv.yview_moveto(0)
+            elif not sb.winfo_ismapped():
+                sb.pack(side="right", fill="y", before=cv)
+
+        def wheel(e):
+            if not fits():
+                cv.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
+        cv.bind("<Configure>", relayout)
+        inner.bind("<Configure>", relayout)
+        cv.bind("<Enter>", lambda e: cv.bind_all("<MouseWheel>", wheel))
+        cv.bind("<Leave>", lambda e: cv.unbind_all("<MouseWheel>"))
+        return inner
 
     def save_settings(self):
         try:
@@ -747,6 +860,7 @@ class TTSWindow:
             self._glados_installed = glados_setup.engine_installed(core.BASE)
             self.update_engine_status()
             self.update_ready()
+            self.sync_random()
         self._tick += 1
         text, color = STATUS.get(self.bot.status, STATUS["stopped"])
         self.status_lbl.configure(text=text)
@@ -783,6 +897,10 @@ class TTSWindow:
 
 
 def main():
+    try:
+        core.tidy_old_layout()   # после обновления старой обновлялкой в корне остаются прежние файлы кода
+    except Exception:
+        pass
     try:
         TTSWindow().run()
     except Exception:

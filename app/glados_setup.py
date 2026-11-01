@@ -96,7 +96,7 @@ class GladosInstaller:
 
     # ---- шаги
     def _install(self, allow_winget):
-        worker = self.base / "tera_worker.py"
+        worker = Path(__file__).resolve().parent / "tera_worker.py"   # рядом с этим файлом (app\)
         if not worker.exists():
             self.log("GLaDOS: рядом с программой нет tera_worker.py — установка невозможна")
             self.step = "нет файла tera_worker.py"

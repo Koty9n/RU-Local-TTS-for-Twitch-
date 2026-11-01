@@ -15,7 +15,7 @@ rem      движка GLaDOS нигде нет (например, удалили
 if exist "%ROOT%data\voices.choice" findstr /x /c:"GLaDOS" "%ROOT%data\voices.choice" >nul || goto :run
 
 :install
-powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%install.ps1"
+powershell -NoProfile -ExecutionPolicy Bypass -File "%ROOT%app\install.ps1"
 if errorlevel 1 goto :fail
 echo.
 echo ============================================================
@@ -25,7 +25,7 @@ echo ============================================================
 pause >nul
 
 :run
-start "" "%ROOT%venv\Scripts\pythonw.exe" "%ROOT%tts_app.py"
+start "" "%ROOT%venv\Scripts\pythonw.exe" "%ROOT%app\tts_app.py"
 exit /b 0
 
 :fail

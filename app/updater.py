@@ -113,7 +113,7 @@ def start_update(base, info, pid=None):
     """Запускает self_update.ps1 отдельным процессом и сразу возвращается. После этого программа должна закрыться."""
     if os.name != "nt":
         raise UpdateError("автообновление работает только в Windows")
-    src = Path(base) / SCRIPT
+    src = Path(__file__).resolve().parent / SCRIPT   # лежит рядом с кодом (app\)
     if not src.exists():
         raise UpdateError(f"нет файла {SCRIPT}")
     tmp = Path(tempfile.mkdtemp(prefix="TTS_update_"))
