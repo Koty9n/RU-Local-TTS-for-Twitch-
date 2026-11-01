@@ -36,8 +36,8 @@
     <td width="50%" valign="top"><img src="docs/screenshots/settings-update.png" alt="Вкладка «Настройки»"></td>
   </tr>
   <tr>
-    <td align="center">Голоса: скачать, добавить свой, проверить звучание</td>
-    <td align="center">Настройки: канал, голос, звук, нагрузка на ПК, автообновление</td>
+    <td align="center">Голоса: скачать, добавить свой, случайный голос, проверить звучание</td>
+    <td align="center">Настройки: канал, голос, звук, нагрузка на ПК; ниже — автообновление</td>
   </tr>
 </table>
 
@@ -163,7 +163,7 @@
     <td valign="top"><img src="docs/screenshots/panel-log.png" alt="Журнал"></td>
   </tr>
   <tr>
-    <td align="center"><b>Пульт</b>: пропуск, громкость, голос, проверка</td>
+    <td align="center"><b>Пульт</b>: пропуск, громкость, голос, случайный голос</td>
     <td align="center"><b>Словарь</b>: замены слов и звуки</td>
     <td align="center"><b>Журнал</b>: что и кто озвучивал</td>
   </tr>
