@@ -22,3 +22,5 @@ data/replacements.txt
 data/blacklist.txt
 data/blocked_users.txt
 data/sounds/
+# setup build output
+dist/

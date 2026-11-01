@@ -3,7 +3,8 @@
 # Прогресс: шаг, полоска, МБ/с, сколько осталось (по счётчику сетевой карты — это почти не нагружает ПК).
 param([switch]$NoPause)
 $ErrorActionPreference = 'Stop'
-$Root  = $PSScriptRoot
+$App   = $PSScriptRoot   # папка с кодом (app\)
+$Root  = if ((Split-Path -Leaf $App) -eq 'app') { Split-Path -Parent $App } else { $App }
 $Data  = Join-Path $Root 'data'
 $Tools = Join-Path $Root 'tools'
 $Log   = Join-Path $Data 'install.log'
@@ -122,8 +123,8 @@ try {
     $teraOld = Test-Path (Join-Path $Root 'venv_tera\Lib\site-packages\TeraTTS')   # установки до v3.7
     if ((PyOk "$base, TeraTTS") -or ($teraOld -and (PyOk $base))) { Skip 'все пакеты импортируются' }
     else {
-        $req = Join-Path $Root 'requirements.lock'
-        if (-not (Test-Path $req)) { $req = Join-Path $Root 'requirements.txt' }
+        $req = Join-Path $App 'requirements.lock'
+        if (-not (Test-Path $req)) { $req = Join-Path $App 'requirements.txt' }
         # ~180 МБ — сжатые пакеты (замерено на чистой установке); в распакованном виде venv ~530 МБ
         if (Test-Path $Uv) { Run 'пакеты' 180 $Uv @('pip', 'install', '--python', $Py, '-r', $req) }
         else { Run 'пакеты' 180 $Py @('-m', 'pip', 'install', '-r', $req) }
@@ -136,7 +137,7 @@ try {
     $choiceFile = Join-Path $Data 'voices.choice'
     if (-not (Test-Path $choiceFile)) {
         Write-Host '      выбор голосов (окно откроется, если что-то ещё не скачано)…' -ForegroundColor DarkGray
-        try { Run 'выбор голосов' 0 $Py @('-X', 'utf8', (Join-Path $Root 'voice_picker.py'), '--installer', $Data, $Root) }
+        try { Run 'выбор голосов' 0 $Py @('-X', 'utf8', (Join-Path $App 'voice_picker.py'), '--installer', $Data, $Root) }
         catch { Write-Host "      окно выбора не открылось — ставлю все голоса ($_)" -ForegroundColor Yellow }
         if (-not (Test-Path $choiceFile)) { (@('# все голоса (окно выбора не открылось)') + $catalog) | Set-Content $choiceFile -Encoding UTF8 }
     }
@@ -147,7 +148,7 @@ try {
     if ($piper.Count -eq 0) { Skip 'голоса Piper не выбраны' }
     elseif ($miss.Count -eq 0) { Skip ('выбранные голоса Piper: ' + ($piper -join ', ')) }
     else {
-        try { Run 'голоса' (61 * $miss.Count) $Py (@('-X', 'utf8', (Join-Path $Root 'install_voices.py'), (Join-Path $Root 'voices')) + $miss) }
+        try { Run 'голоса' (61 * $miss.Count) $Py (@('-X', 'utf8', (Join-Path $App 'install_voices.py'), (Join-Path $Root 'voices')) + $miss) }
         catch { Write-Host "      часть голосов не скачалась — докачать: «Голоса» → «Скачать голоса…» ($_)" -ForegroundColor Yellow }
     }
 
@@ -165,7 +166,7 @@ try {
             $tp = if (PyOk 'import TeraTTS') { $Py } else { Join-Path $Root 'venv_tera\Scripts\python.exe' }
             try {
                 # модель GLaDOS ~210 МБ + ударения ~355 (data\ruaccent 165 + ruaccent\koziev 189), если их ещё нет
-                Run 'GLaDOS' $(if ($accOk) { 210 } else { 565 }) $tp @('-X', 'utf8', (Join-Path $Root 'tera_worker.py'), 'TeraTTS/glados2-g2p-vits', 'tiny2', '--warmup') $teraDir
+                Run 'GLaDOS' $(if ($accOk) { 210 } else { 565 }) $tp @('-X', 'utf8', (Join-Path $App 'tera_worker.py'), 'TeraTTS/glados2-g2p-vits', 'tiny2', '--warmup') $teraDir
                 'done' | Set-Content (Join-Path $Data 'glados_tried.flag') -Encoding ASCII
             }
             catch { Write-Host "      GLaDOS не поставилась — остальные голоса работают. Повтор: кнопка в программе ($_)" -ForegroundColor Yellow }
@@ -177,20 +178,20 @@ try {
     if (Test-Path (Join-Path $accDir 'nn\nn_omograph')) { Skip 'ударения' }
     else {
         Write-Host '      качаю модели ударений' -ForegroundColor DarkGray
-        try { Run 'ударения' 355 $Py @('-X', 'utf8', (Join-Path $Root 'accent.py'), '--download', $accDir) }
+        try { Run 'ударения' 355 $Py @('-X', 'utf8', (Join-Path $App 'accent.py'), '--download', $accDir) }
         catch { Write-Host "      ударения не скачались — программа скачает их сама при запуске ($_)" -ForegroundColor Yellow }
     }
 
     Head 'Ярлык на рабочем столе'
     if (Test-Path (Join-Path $Data 'shortcut.flag')) { Skip 'ярлык уже создавали' }
     else {
-        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'make_shortcut.ps1') -Root $Root | Out-Null
+        & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $App 'make_shortcut.ps1') -Root $Root | Out-Null
         'done' | Set-Content (Join-Path $Data 'shortcut.flag') -Encoding ASCII
         Write-Host '      готово' -ForegroundColor DarkGray
     }
 
-    if (-not (Test-Path (Join-Path $Root 'config.json')) -and (Test-Path (Join-Path $Root 'config.example.json'))) {
-        Copy-Item (Join-Path $Root 'config.example.json') (Join-Path $Root 'config.json')
+    if (-not (Test-Path (Join-Path $Root 'config.json')) -and (Test-Path (Join-Path $App 'config.example.json'))) {
+        Copy-Item (Join-Path $App 'config.example.json') (Join-Path $Root 'config.json')
     }
     if (Test-Path $env:UV_CACHE_DIR) {   # кеш загрузок больше не нужен — освобождаем место
         Remove-Item $env:UV_CACHE_DIR -Recurse -Force -ErrorAction SilentlyContinue

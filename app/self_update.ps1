@@ -36,6 +36,7 @@ function Msg($text, $icon = 'Information') {
 function Log($text) {
     try { Add-Content -LiteralPath (Join-Path $Target 'data\update.log') -Encoding UTF8 -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm')  $text" } catch {}
 }
+function LockPath($d) { $a = Join-Path $d 'app\requirements.lock'; if (Test-Path -LiteralPath $a) { $a } else { Join-Path $d 'requirements.lock' } }
 function Hash($f) { if (Test-Path -LiteralPath $f) { (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash } else { '' } }
 function Rollback {
     foreach ($rel in $done) {
@@ -75,7 +76,7 @@ try {
     Step 'Распаковываю…'
     $ex = Join-Path $Tmp 'x'
     Expand-Archive -LiteralPath $zip -DestinationPath $ex -Force
-    $core = Get-ChildItem -LiteralPath $ex -Recurse -Filter 'tts_core.py' -File | Select-Object -First 1
+    $core = Get-ChildItem -LiteralPath $ex -Recurse -Filter 'tts_core.py' -File | Sort-Object { $_.FullName.Length } | Select-Object -First 1
     if (-not $core) { throw 'В скачанном архиве нет программы (tts_core.py).' }
     $Src = $core.DirectoryName.TrimEnd('\')
     $newVer = if (Test-Path -LiteralPath (Join-Path $Src 'version.txt')) {
@@ -83,7 +84,7 @@ try {
 
     # ---- 3. заменяем код ----
     Step 'Обновляю файлы…'
-    $oldLock = Hash (Join-Path $Target 'requirements.lock')
+    $oldLock = Hash (LockPath $Target)
     $Backup = Join-Path $Target ('_backup\обновление_' + (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
     $copied = 0
     foreach ($f in Get-ChildItem -LiteralPath $Src -Recurse -File) {
@@ -103,11 +104,11 @@ try {
     }
 
     # ---- 4. поменялся список библиотек — доставляем ----
-    if ((Hash (Join-Path $Target 'requirements.lock')) -ne $oldLock) {
+    if ((Hash (LockPath $Target)) -ne $oldLock) {
         Step 'Докачиваю библиотеки (может занять пару минут)…'
         $py = Join-Path $Target 'venv\Scripts\python.exe'
         if (Test-Path -LiteralPath $py) {
-            & $py -m pip install --disable-pip-version-check -r (Join-Path $Target 'requirements.lock') 2>&1 | Out-Null
+            & $py -m pip install --disable-pip-version-check -r (LockPath $Target) 2>&1 | Out-Null
             if ($LASTEXITCODE -ne 0) {
                 Log 'pip: библиотеки не докачались'
                 Msg "Код обновлён, но новые библиотеки не докачались (нет интернета?).`nЗапусти start_tts.bat при работающем интернете — недостающее поставится." 'Warning'

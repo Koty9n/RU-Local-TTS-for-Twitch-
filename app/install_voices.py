@@ -106,5 +106,5 @@ def main(out_dir, only=None):
 
 if __name__ == "__main__":
     # python install_voices.py [папка_voices] [имя ...]  — без имён качаются все
-    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parent / "voices",
+    sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else Path(__file__).resolve().parent.parent / "voices",
                   set(sys.argv[2:]) or None))

@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 [System.Windows.Forms.Application]::EnableVisualStyles()
 $Title = 'Обновление TwitchTTS'
-$Here = $PSScriptRoot
+$Here = if ((Split-Path -Leaf $PSScriptRoot) -eq 'app') { Split-Path -Parent $PSScriptRoot } else { $PSScriptRoot }   # корень программы (скрипт лежит в app\)
 # имена скачанного архива: старая раздача, релиз на GitHub и «Code → Download ZIP» (RU-Local-TTS-for-Twitch--main.zip)
 $ZipNames = @('TwitchTTS*.zip', 'RU-Local-TTS*.zip')
 $Owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }   # окна — поверх консоли
@@ -30,6 +30,7 @@ function PickFolder($text) {
     if ($fb.ShowDialog($Owner) -ne 'OK') { exit 0 }
     $fb.SelectedPath
 }
+function LockPath($d) { $a = Join-Path $d 'app\requirements.lock'; if (Test-Path -LiteralPath $a) { $a } else { Join-Path $d 'requirements.lock' } }
 function Hash($f) { if (Test-Path -LiteralPath $f) { (Get-FileHash -LiteralPath $f -Algorithm SHA256).Hash } else { '' } }
 
 try {
@@ -72,7 +73,7 @@ try {
         Write-Host "Распаковываю $Src"
         $Tmp = Join-Path $env:TEMP ('TwitchTTS_update_' + [guid]::NewGuid().ToString('N').Substring(0, 8))
         Expand-Archive -LiteralPath $Src -DestinationPath $Tmp -Force
-        $SrcRoot = Get-ChildItem -LiteralPath $Tmp -Recurse -Filter 'tts_core.py' -File | Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
+        $SrcRoot = Get-ChildItem -LiteralPath $Tmp -Recurse -Filter 'tts_core.py' -File | Sort-Object { $_.FullName.Length } | Select-Object -First 1 | ForEach-Object { $_.DirectoryName }
     } else { $SrcRoot = $Src }
     if (-not (IsSource $SrcRoot)) { Fail 'Это не архив TwitchTTS: внутри нет tts_core.py.' }
     $SrcRoot = (Resolve-Path -LiteralPath $SrcRoot).Path.TrimEnd('\')
@@ -96,7 +97,7 @@ try {
     }
 
     # ---- бэкап и замена ----
-    $oldLock = Hash (Join-Path $Target 'requirements.lock')
+    $oldLock = Hash (LockPath $Target)
     $Backup = Join-Path $Target ('_backup\обновление_' + (Get-Date -Format 'yyyy-MM-dd_HH-mm'))
     $copied = 0; $kept = 0
     foreach ($f in Get-ChildItem -LiteralPath $SrcRoot -Recurse -File) {
@@ -116,10 +117,10 @@ try {
     Write-Host "Обновлено файлов: $copied. Свои файлы в data не тронуты: $kept."
 
     # ---- поменялись библиотеки — доставляем ----
-    if ((Hash (Join-Path $Target 'requirements.lock')) -ne $oldLock) {
+    if ((Hash (LockPath $Target)) -ne $oldLock) {
         Write-Host 'Поменялся список библиотек — докачиваю (нужен интернет)…' -ForegroundColor Yellow
         $py = Join-Path $Target 'venv\Scripts\python.exe'
-        & $py -m pip install --disable-pip-version-check -r (Join-Path $Target 'requirements.lock')
+        & $py -m pip install --disable-pip-version-check -r (LockPath $Target)
         if ($LASTEXITCODE -ne 0) {
             [void](Ask "Код обновлён, но библиотеки не докачались (нет интернета?).`nЗапусти ОБНОВИТЬ.bat ещё раз позже." 'OK' 'Warning')
         }
